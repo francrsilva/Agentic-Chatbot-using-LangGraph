@@ -79,7 +79,7 @@ jobs:
           cache-to: type=gha,mode=max
 
 
-continuous_deployment:
+  continuous_deployment:
     name: Deploy to AWS EC2
     needs: push_to_registry
     runs-on: self-hosted
