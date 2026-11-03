@@ -18,7 +18,7 @@ from langchain_community.vectorstores import FAISS
 import os 
 from typing import Any
 from langgraph.types import interrupt, Command
-from langchain_openai import ChatOpenAI
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
     
 
 
@@ -35,8 +35,8 @@ llm = ChatOpenAI(model="gpt-4o-mini")
 
 
 # Embeddings model
-embeddings = GoogleGenerativeAIEmbeddings(model="gemini-embedding-001")
-
+# embeddings = GoogleGenerativeAIEmbeddings(model="gemini-embedding-001")
+embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
 
 
 def ingest_rag_document(file_path):
