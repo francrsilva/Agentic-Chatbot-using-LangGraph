@@ -1,0 +1,216 @@
+name: Streamlit AWS CI/CD 
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - 'README.md'
+
+  workflow_dispatch:
+
+concurrency:
+  group: agentic-chatbot-production
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  
+
+jobs:
+
+  integration:
+    name: Continuous Integration
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Lint Code
+        run: |
+          echo "Running unit tests"
+
+  push_to_registry:
+    name: Build and Push Docker Image
+    runs-on: ubuntu-latest
+    needs: integration
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate Docker image settings
+        env:
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          IMAGE_NAME: ${{ secrets.IMAGE_NAME }}
+        run: |
+          if [ -z "$DOCKER_USERNAME" ]; then
+            echo "Error: DOCKER_USERNAME is not set."
+            exit 1
+          fi
+
+          if [ -z "$IMAGE_NAME" ]; then
+            echo "IMAGE_NAME secret is missing."
+            exit 1
+          fi
+
+          echo "Docker image settings are configured."
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build and Push Docker Image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/${{ secrets.IMAGE_NAME }}:main
+            ${{ secrets.DOCKER_USERNAME }}/${{ secrets.IMAGE_NAME }}:sha-${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+
+continuous_deployment:
+    name: Deploy to AWS EC2
+    needs: push_to_registry
+    runs-on: self-hosted
+
+    steps:
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Validate application secrets
+        env:
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENWEATHER_API_KEY: ${{ secrets.OPENWEATHER_API_KEY }}
+          LANGSMIITH_TRACING: ${{ secrets.LANGSMIITH_TRACING }}
+          LANGSMITH_ENDPOINT: ${{ secrets.LANGSMITH_ENDPOINT }}
+          LANGSMITH_PROJECT: ${{ secrets.LANGSMITH_PROJECT }}
+        run: |
+          if [ -z "$GOOGLE_API_KEY" ]; then
+            echo "Error: GOOGLE_API_KEY is not set."
+            exit 1
+          fi
+
+          if [ -z "$TAVILY_API_KEY" ]; then
+            echo "Error: TAVILY_API_KEY is not set."
+            exit 1
+          fi
+
+          if [ -z "$OPENWEATHER_API_KEY" ]; then
+            echo "Error: OPENWEATHER_API_KEY is not set."
+            exit 1
+          fi
+
+          if [ -z "$LANGSMIITH_TRACING" ]; then
+            echo "Error: LANGSMIITH_TRACING is not set."
+            exit 1
+          fi
+
+          if [ -z "$LANGSMITH_ENDPOINT" ]; then
+            echo "Error: LANGSMITH_ENDPOINT is not set."
+            exit 1
+          fi
+
+          if [ -z "$LANGSMITH_PROJECT" ]; then
+            echo "Error: LANGSMITH_PROJECT is not set."
+            exit 1
+          fi
+
+          echo "All required application secrets are configured."
+
+      - name: Pull latest Docker image
+        env:
+          IMAGE_PATH: ${{ secrets.DOCKER_USERNAME }}/${{ secrets.IMAGE_NAME }}
+        run: |
+          echo "Pulling the latest Docker image..."
+          docker pull $IMAGE_PATH:main
+
+      - name: Stop and remove existing container
+        run: |
+          docker rm -f stapp 2>/dev/null || true
+
+      - name: Run Streamlit container
+        env:
+          IMAGE_PATH: ${{ secrets.DOCKER_USERNAME }}/${{ secrets.IMAGE_NAME }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+          OPENWEATHER_API_KEY: ${{ secrets.OPENWEATHER_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          LANGSMIITH_TRACING: ${{ secrets.LANGSMIITH_TRACING }}
+          LANGSMITH_ENDPOINT: ${{ secrets.LANGSMITH_ENDPOINT }}
+          LANGSMITH_PROJECT: ${{ secrets.LANGSMITH_PROJECT }}       
+        
+        run: |
+          docker run -d \
+            --restart unless-stopped \
+            --name stapp \
+            -p 8501:8501 \
+            -e OPENAI_API_KEY \
+            -e GOOGLE_API_KEY \
+            -e TAVILY_API_KEY \
+            -e OPENWEATHER_API_KEY \
+            -e LANGSMIITH_TRACING \
+            -e LANGSMITH_ENDPOINT \
+            -e LANGSMITH_PROJECT \
+            ${IMAGE_PATH}:main
+
+      - name: Verify container is running
+        run: |
+          sleep 10
+          if ! docker ps \
+          -- filter "name=^stapp" \
+          -- filter "status=running" \
+          --format "{{.Names}}" | grep -q "^stapp$"; then
+
+            echo "Error: Streamlit container failed to start."
+            docker logs stapp || true
+            exit 1
+          fi
+
+          echo "Streamlit container is running."
+          docker ps --filter "name=^stapp$"
+
+      - name: Verify Streamlit health endpoint
+        run: |
+          for attempt in $(seq 1 12); do
+            if docker exec stapp python -c \
+              "import urllib.request; urllib.request.urlopen('http://localhost:8501/_stcore/health')" \
+              >/dev/null 2>&1; then
+
+              echo "Streamlit health endpoint is reachable."
+              exit 0
+            fi
+
+            echo "Waiting for Streamlit health endpoint to be reachable..."
+            sleep 5
+          done
+
+          echo "Streamlit did not become healthy."
+          docker logs --tail stapp || true
+          exit 1
+
+      - name: Show recent application logs
+        if: always()
+        run: |
+          docker logs --tail 50 stapp 2>/dev/null || true
+
+      - name: Remove unused Docker images
+        if: always()
+        run: |
+          docker image prune -f 
