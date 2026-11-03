@@ -173,8 +173,8 @@ jobs:
         run: |
           sleep 10
           if ! docker ps \
-          -- filter "name=^stapp" \
-          -- filter "status=running" \
+          --filter "name=^stapp" \
+          --filter "status=running" \
           --format "{{.Names}}" | grep -q "^stapp$"; then
 
             echo "Error: Streamlit container failed to start."
