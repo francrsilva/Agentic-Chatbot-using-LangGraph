@@ -97,7 +97,7 @@ jobs:
           TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENWEATHER_API_KEY: ${{ secrets.OPENWEATHER_API_KEY }}
-          LANGSMIITH_TRACING: ${{ secrets.LANGSMIITH_TRACING }}
+          LANGSMITH_TRACING: ${{ secrets.LANGSMITH_TRACING }}
           LANGSMITH_ENDPOINT: ${{ secrets.LANGSMITH_ENDPOINT }}
           LANGSMITH_PROJECT: ${{ secrets.LANGSMITH_PROJECT }}
         run: |
@@ -116,8 +116,8 @@ jobs:
             exit 1
           fi
 
-          if [ -z "$LANGSMIITH_TRACING" ]; then
-            echo "Error: LANGSMIITH_TRACING is not set."
+          if [ -z "$LANGSMITH_TRACING" ]; then
+            echo "Error: LANGSMITH_TRACING is not set."
             exit 1
           fi
 
@@ -151,7 +151,7 @@ jobs:
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
           TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
           OPENWEATHER_API_KEY: ${{ secrets.OPENWEATHER_API_KEY }}
-          LANGSMIITH_TRACING: ${{ secrets.LANGSMIITH_TRACING }}
+          LANGSMITH_TRACING: ${{ secrets.LANGSMITH_TRACING }}
           LANGSMITH_ENDPOINT: ${{ secrets.LANGSMITH_ENDPOINT }}
           LANGSMITH_PROJECT: ${{ secrets.LANGSMITH_PROJECT }}       
         
@@ -164,7 +164,7 @@ jobs:
             -e GOOGLE_API_KEY \
             -e TAVILY_API_KEY \
             -e OPENWEATHER_API_KEY \
-            -e LANGSMIITH_TRACING \
+            -e LANGSMITH_TRACING \
             -e LANGSMITH_ENDPOINT \
             -e LANGSMITH_PROJECT \
             ${IMAGE_PATH}:main
